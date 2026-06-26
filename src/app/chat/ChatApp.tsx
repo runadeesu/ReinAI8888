@@ -14,6 +14,7 @@ export default function ChatApp({ username }: { username: string }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   async function loadChats() {
@@ -59,6 +60,12 @@ export default function ChatApp({ username }: { username: string }) {
     const data = await res.json();
     await loadChats();
     setActiveChatId(data.id);
+    setSidebarOpen(false);
+  }
+
+  async function handleSelectChat(chatId: number) {
+    setActiveChatId(chatId);
+    setSidebarOpen(false);
   }
 
   async function handleDeleteChat(chatId: number) {
@@ -122,11 +129,31 @@ export default function ChatApp({ username }: { username: string }) {
   }
 
   return (
-    <div className="flex flex-1 h-screen bg-zinc-50 dark:bg-black">
-      <aside className="w-64 flex flex-col border-r border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900">
-        <div className="p-4 border-b border-black/10 dark:border-white/10">
-          <h1 className="text-lg font-bold">ReinAI</h1>
-          <p className="text-xs text-zinc-500 truncate">{username}</p>
+    <div className="relative flex flex-1 h-[100dvh] overflow-hidden bg-zinc-50 dark:bg-black">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-30 w-72 max-w-[85vw] md:w-64 md:max-w-none flex flex-col border-r border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        <div className="p-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold">ReinAI</h1>
+            <p className="text-xs text-zinc-500 truncate">{username}</p>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden text-zinc-400 hover:text-foreground p-1"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
         </div>
         <button
           onClick={handleNewChat}
@@ -143,7 +170,7 @@ export default function ChatApp({ username }: { username: string }) {
                   ? "bg-zinc-200 dark:bg-zinc-800"
                   : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
               }`}
-              onClick={() => setActiveChatId(chat.id)}
+              onClick={() => handleSelectChat(chat.id)}
             >
               <span className="truncate">{chat.title}</span>
               <button
@@ -151,7 +178,7 @@ export default function ChatApp({ username }: { username: string }) {
                   e.stopPropagation();
                   handleDeleteChat(chat.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 text-xs px-1"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-red-500 text-xs px-1 shrink-0"
                 title="削除"
               >
                 ✕
@@ -167,8 +194,21 @@ export default function ChatApp({ username }: { username: string }) {
         </button>
       </aside>
 
-      <main className="flex flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl w-full mx-auto">
+      <main className="flex flex-1 flex-col min-w-0">
+        <div className="md:hidden flex items-center gap-3 border-b border-black/10 dark:border-white/10 px-3 py-2.5 bg-white dark:bg-zinc-900">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-1 text-foreground"
+            aria-label="メニューを開く"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
+            </svg>
+          </button>
+          <span className="font-semibold">ReinAI</span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 max-w-3xl w-full mx-auto">
           {loadingMessages ? (
             <p className="text-center text-zinc-400 text-sm">読み込み中...</p>
           ) : messages.length === 0 ? (
@@ -177,7 +217,7 @@ export default function ChatApp({ username }: { username: string }) {
             messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ${
+                  className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
                     m.role === "user"
                       ? "bg-foreground text-background"
                       : "bg-zinc-100 dark:bg-zinc-800 text-foreground"
@@ -190,7 +230,7 @@ export default function ChatApp({ username }: { username: string }) {
           )}
           {sending && (
             <div className="flex justify-start">
-              <div className="max-w-[75%] rounded-2xl px-4 py-2 text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-400">
+              <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2 text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-400">
                 ReinAIが入力中...
               </div>
             </div>
@@ -200,18 +240,18 @@ export default function ChatApp({ username }: { username: string }) {
 
         <form
           onSubmit={handleSend}
-          className="border-t border-black/10 dark:border-white/10 p-4 max-w-3xl w-full mx-auto flex gap-2"
+          className="border-t border-black/10 dark:border-white/10 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-w-3xl w-full mx-auto flex gap-2"
         >
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="メッセージを入力..."
-            className="flex-1 rounded-full border border-black/15 dark:border-white/15 bg-transparent px-4 py-2.5 text-sm outline-none focus:border-black dark:focus:border-white"
+            className="flex-1 min-w-0 rounded-full border border-black/15 dark:border-white/15 bg-transparent px-4 py-2.5 text-sm outline-none focus:border-black dark:focus:border-white"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="rounded-full bg-foreground text-background px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            className="rounded-full bg-foreground text-background px-4 sm:px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 shrink-0"
           >
             送信
           </button>
