@@ -1,28 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import db, { ensureSchema } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 
 export async function GET() {
+  await ensureSchema();
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const chats = db
-    .prepare("SELECT id, title, created_at FROM chats WHERE user_id = ? ORDER BY id DESC")
-    .all(session.userId);
+  const result = await db.execute({
+    sql: "SELECT id, title, created_at FROM chats WHERE user_id = ? ORDER BY id DESC",
+    args: [session.userId],
+  });
 
-  return NextResponse.json({ chats });
+  return NextResponse.json({ chats: result.rows });
 }
 
 export async function POST(req: NextRequest) {
+  await ensureSchema();
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "新しいチャット";
 
-  const result = db
-    .prepare("INSERT INTO chats (user_id, title) VALUES (?, ?)")
-    .run(session.userId, title);
+  const result = await db.execute({
+    sql: "INSERT INTO chats (user_id, title) VALUES (?, ?)",
+    args: [session.userId, title],
+  });
 
-  return NextResponse.json({ id: result.lastInsertRowid, title });
+  return NextResponse.json({ id: Number(result.lastInsertRowid), title });
 }

@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import db, { ensureSchema } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 
 type ChatRow = { id: number; user_id: number };
 type MessageRow = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await ensureSchema();
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const chatId = Number(id);
-  const chat = db.prepare("SELECT id, user_id FROM chats WHERE id = ?").get(chatId) as ChatRow | undefined;
+  const chatResult = await db.execute({
+    sql: "SELECT id, user_id FROM chats WHERE id = ?",
+    args: [chatId],
+  });
+  const chat = chatResult.rows[0] as unknown as ChatRow | undefined;
   if (!chat || chat.user_id !== session.userId) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
@@ -21,17 +26,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "メッセージを入力してください" }, { status: 400 });
   }
 
-  db.prepare("INSERT INTO messages (chat_id, role, content) VALUES (?, 'user', ?)").run(chatId, content);
+  await db.execute({
+    sql: "INSERT INTO messages (chat_id, role, content) VALUES (?, 'user', ?)",
+    args: [chatId, content],
+  });
 
-  const titleRow = db.prepare("SELECT title FROM chats WHERE id = ?").get(chatId) as { title: string };
+  const titleResult = await db.execute({
+    sql: "SELECT title FROM chats WHERE id = ?",
+    args: [chatId],
+  });
+  const titleRow = titleResult.rows[0] as unknown as { title: string };
   if (titleRow.title === "新しいチャット") {
     const newTitle = content.trim().slice(0, 30);
-    db.prepare("UPDATE chats SET title = ? WHERE id = ?").run(newTitle, chatId);
+    await db.execute({ sql: "UPDATE chats SET title = ? WHERE id = ?", args: [newTitle, chatId] });
   }
 
-  const history = db
-    .prepare("SELECT role, content FROM messages WHERE chat_id = ? ORDER BY id ASC")
-    .all(chatId) as MessageRow[];
+  const historyResult = await db.execute({
+    sql: "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY id ASC",
+    args: [chatId],
+  });
+  const history = historyResult.rows as unknown as MessageRow[];
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -68,10 +82,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "AIからの応答取得に失敗しました" }, { status: 502 });
   }
 
-  db.prepare("INSERT INTO messages (chat_id, role, content) VALUES (?, 'assistant', ?)").run(
-    chatId,
-    assistantText
-  );
+  await db.execute({
+    sql: "INSERT INTO messages (chat_id, role, content) VALUES (?, 'assistant', ?)",
+    args: [chatId, assistantText],
+  });
 
   return NextResponse.json({ reply: assistantText });
 }

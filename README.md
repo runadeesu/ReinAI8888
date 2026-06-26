@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReinAI
 
-## Getting Started
+Next.js で作られたチャットAIサイト。ログイン・新規登録・自動ログイン・チャット保存・チャット履歴削除・Groq APIによるAI応答を備えています。
 
-First, run the development server:
+## ローカル開発
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env` に以下を設定してください（`.env.example` 参照）。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+GROQ_API_KEY=...
+JWT_SECRET=...
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` を未設定のままにすると、`data/reinai.db` というローカルSQLiteファイルが自動的に使われます（開発用）。
 
-## Learn More
+## 本番デプロイ（Vercel + Turso）
 
-To learn more about Next.js, take a look at the following resources:
+Vercel のようなサーバーレス環境はファイルシステムが永続化されないため、本番では [Turso](https://turso.tech)（libSQL）を使います。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 1. Tursoデータベースを作成
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+curl -sSfL https://get.tur.so/install.sh | bash
+turso auth signup   # または turso auth login
+turso db create reinai
+turso db show reinai --url        # → TURSO_DATABASE_URL
+turso db tokens create reinai     # → TURSO_AUTH_TOKEN
+```
 
-## Deploy on Vercel
+### 2. Vercelにデプロイ
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm i -g vercel
+vercel
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Vercel のプロジェクト設定（Environment Variables）に以下を追加してください。
+
+| Key | Value |
+|---|---|
+| `GROQ_API_KEY` | Groq APIキー |
+| `JWT_SECRET` | ランダムな長い文字列 |
+| `TURSO_DATABASE_URL` | `turso db show` で取得したURL |
+| `TURSO_AUTH_TOKEN` | `turso db tokens create` で取得したトークン |
+
+設定後、`vercel --prod` で本番デプロイします。
