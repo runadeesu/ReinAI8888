@@ -1,14 +1,11 @@
-import { createClient } from "@libsql/client";
-import path from "path";
-import fs from "fs";
+import { createClient } from "@libsql/client/http";
 
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir) && !process.env.TURSO_DATABASE_URL) {
-  fs.mkdirSync(dataDir, { recursive: true });
+if (!process.env.TURSO_DATABASE_URL) {
+  throw new Error("TURSO_DATABASE_URL is not set");
 }
 
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL ?? `file:${path.join(dataDir, "reinai.db")}`,
+  url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
