@@ -4,7 +4,32 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Chat = { id: number; title: string; created_at: string };
-type Message = { id: number; role: "user" | "assistant"; content: string; created_at: string };
+type Message = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  imagePreview?: string; // only for optimistic UI
+};
+
+type AttachedFile = {
+  name: string;
+  type: "image" | "text";
+  data: string; // base64 for image, plain text for text files
+  preview?: string; // data URL for image preview
+};
+
+const TEXT_EXTENSIONS = [
+  ".txt", ".md", ".csv", ".json", ".js", ".ts", ".tsx", ".jsx",
+  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".html", ".css",
+  ".xml", ".yaml", ".yml",
+];
+
+function detectFileType(name: string): "image" | "text" | null {
+  if (/\.(jpe?g|png|gif|webp)$/i.test(name)) return "image";
+  if (TEXT_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext))) return "text";
+  return null;
+}
 
 export default function ChatApp({ username }: { username: string }) {
   const router = useRouter();
@@ -15,7 +40,10 @@ export default function ChatApp({ username }: { username: string }) {
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadChats() {
     const res = await fetch("/api/chats");
@@ -77,9 +105,53 @@ export default function ChatApp({ username }: { username: string }) {
     }
   }
 
+  async function handleDeleteAllChats() {
+    if (!confirm("すべてのチャット履歴を削除しますか？この操作は取り消せません。")) return;
+    await fetch("/api/chats", { method: "DELETE" });
+    setChats([]);
+    setActiveChatId(null);
+    setMessages([]);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!e.target.files) return;
+    e.target.value = "";
+    if (!file) return;
+
+    setFileError(null);
+    const fileType = detectFileType(file.name);
+    if (!fileType) {
+      setFileError("対応していないファイル形式です（画像・テキストファイルのみ）");
+      return;
+    }
+
+    // 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError("ファイルサイズは10MB以下にしてください");
+      return;
+    }
+
+    const reader = new FileReader();
+    if (fileType === "image") {
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        const base64 = dataUrl.split(",")[1];
+        setAttachedFile({ name: file.name, type: "image", data: base64, preview: dataUrl });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        setAttachedFile({ name: file.name, type: "text", data: text });
+      };
+      reader.readAsText(file);
+    }
+  }
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || sending) return;
+    if ((!input.trim() && !attachedFile) || sending) return;
 
     let chatId = activeChatId;
     if (chatId === null) {
@@ -90,19 +162,40 @@ export default function ChatApp({ username }: { username: string }) {
       await loadChats();
     }
 
-    const content = input;
+    const content = input.trim();
+    const file = attachedFile;
     setInput("");
+    setAttachedFile(null);
+    setFileError(null);
+
+    // Optimistic UI
+    const optimisticContent = file
+      ? `${content}${content ? "\n" : ""}${file.type === "image" ? `【画像添付: ${file.name}】` : `【ファイル添付: ${file.name}】`}`
+      : content;
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), role: "user", content, created_at: new Date().toISOString() },
+      {
+        id: Date.now(),
+        role: "user",
+        content: optimisticContent,
+        created_at: new Date().toISOString(),
+        imagePreview: file?.type === "image" ? file.preview : undefined,
+      },
     ]);
     setSending(true);
 
     try {
+      const body: Record<string, string> = { content };
+      if (file) {
+        body.fileName = file.name;
+        body.fileData = file.data;
+        body.fileType = file.type;
+      }
+
       const res = await fetch(`/api/chats/${chatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
@@ -186,9 +279,17 @@ export default function ChatApp({ username }: { username: string }) {
             </div>
           ))}
         </div>
+        {chats.length > 0 && (
+          <button
+            onClick={handleDeleteAllChats}
+            className="mx-3 mb-1 rounded-full border border-red-200 dark:border-red-900 py-2 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+          >
+            履歴をすべて削除
+          </button>
+        )}
         <button
           onClick={handleLogout}
-          className="m-3 rounded-full border border-black/15 dark:border-white/15 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5"
+          className="m-3 mt-1 rounded-full border border-black/15 dark:border-white/15 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5"
         >
           ログアウト
         </button>
@@ -223,6 +324,14 @@ export default function ChatApp({ username }: { username: string }) {
                       : "bg-zinc-100 dark:bg-zinc-800 text-foreground"
                   }`}
                 >
+                  {m.imagePreview && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={m.imagePreview}
+                      alt="添付画像"
+                      className="rounded-lg mb-2 max-w-full max-h-60 object-contain"
+                    />
+                  )}
                   {m.content}
                 </div>
               </div>
@@ -238,24 +347,64 @@ export default function ChatApp({ username }: { username: string }) {
           <div ref={bottomRef} />
         </div>
 
-        <form
-          onSubmit={handleSend}
-          className="border-t border-black/10 dark:border-white/10 p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-w-3xl w-full mx-auto flex gap-2"
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="メッセージを入力..."
-            className="flex-1 min-w-0 rounded-full border border-black/15 dark:border-white/15 bg-transparent px-4 py-2.5 text-sm outline-none focus:border-black dark:focus:border-white"
-          />
-          <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            className="rounded-full bg-foreground text-background px-4 sm:px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 shrink-0"
-          >
-            送信
-          </button>
-        </form>
+        <div className="border-t border-black/10 dark:border-white/10 pb-[max(0.5rem,env(safe-area-inset-bottom))] max-w-3xl w-full mx-auto">
+          {/* File preview */}
+          {attachedFile && (
+            <div className="flex items-center gap-2 px-3 pt-2">
+              {attachedFile.type === "image" && attachedFile.preview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={attachedFile.preview} alt={attachedFile.name} className="h-12 w-12 rounded-lg object-cover border border-black/10 dark:border-white/10" />
+              ) : (
+                <div className="h-12 w-12 rounded-lg border border-black/10 dark:border-white/10 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs text-zinc-500 font-mono overflow-hidden p-1 text-center">
+                  {attachedFile.name.split(".").pop()?.toUpperCase()}
+                </div>
+              )}
+              <span className="text-xs text-zinc-500 truncate max-w-[200px]">{attachedFile.name}</span>
+              <button
+                onClick={() => setAttachedFile(null)}
+                className="ml-auto text-zinc-400 hover:text-red-500 text-xs shrink-0"
+                title="ファイルを外す"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {fileError && (
+            <p className="px-4 pt-1.5 text-xs text-red-500">{fileError}</p>
+          )}
+          <form onSubmit={handleSend} className="flex gap-2 p-3 sm:p-4 pt-2 items-end">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.txt,.md,.csv,.json,.js,.ts,.tsx,.jsx,.py,.rb,.go,.rs,.java,.c,.cpp,.html,.css,.xml,.yaml,.yml"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-full border border-black/15 dark:border-white/15 p-2.5 text-zinc-500 hover:text-foreground hover:border-black/30 dark:hover:border-white/30 shrink-0"
+              title="ファイルを添付"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="メッセージを入力..."
+              className="flex-1 min-w-0 rounded-full border border-black/15 dark:border-white/15 bg-transparent px-4 py-2.5 text-sm outline-none focus:border-black dark:focus:border-white"
+            />
+            <button
+              type="submit"
+              disabled={sending || (!input.trim() && !attachedFile)}
+              className="rounded-full bg-foreground text-background px-4 sm:px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50 shrink-0"
+            >
+              送信
+            </button>
+          </form>
+        </div>
       </main>
     </div>
   );
