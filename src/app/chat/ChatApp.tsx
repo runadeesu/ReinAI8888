@@ -44,7 +44,7 @@ const LANG_EXT: Record<string, string> = {
 
 function extractFilename(code: string, lang: string): string {
   const first = code.split("\n")[0].trim();
-  const m = first.match(/^(?:\/\/|#|REM|::|\/\*|<!--)\s*([\w. -]+\.[\w]+)/i);
+  const m = first.match(/^(?:\/\/|#|REM|::|\/*|<!--)\s*([\w. -]+\.[\w]+)/i);
   if (m) return m[1].trim();
   const ext = LANG_EXT[lang.toLowerCase()];
   return ext ? `code.${ext}` : "code.txt";
@@ -85,7 +85,6 @@ async function downloadZip(files: { filename: string; code: string }[]) {
   const { zipSync, strToU8 } = await import("fflate");
   const entries: Record<string, Uint8Array> = {};
   for (const f of files) {
-    // avoid duplicate names
     let name = f.filename;
     let i = 1;
     while (entries[name]) name = `${i++}_${f.filename}`;
@@ -115,18 +114,10 @@ function CodeBlock({ lang, code, filename }: { lang: string; code: string; filen
       <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800 dark:bg-zinc-900 text-zinc-300 text-xs">
         <span className="font-mono font-medium">{filename}</span>
         <div className="flex gap-2">
-          <button
-            onClick={handleCopy}
-            className="hover:text-white transition-colors"
-            title="コピー"
-          >
+          <button onClick={handleCopy} className="hover:text-white transition-colors" title="コピー">
             {copied ? "✓ コピー済み" : "コピー"}
           </button>
-          <button
-            onClick={() => downloadFile(filename, code)}
-            className="hover:text-white transition-colors"
-            title="ダウンロード"
-          >
+          <button onClick={() => downloadFile(filename, code)} className="hover:text-white transition-colors" title="ダウンロード">
             ↓ DL
           </button>
         </div>
