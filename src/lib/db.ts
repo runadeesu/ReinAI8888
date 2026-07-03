@@ -28,7 +28,7 @@ export function ensureSchema() {
           `CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password_hash TEXT,
+            password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
           )`,
           `CREATE TABLE IF NOT EXISTS chats (
@@ -47,10 +47,9 @@ export function ensureSchema() {
         ],
         "write"
       );
-      await addColumnIfMissing("users", "google_id", "TEXT");
       await addColumnIfMissing("users", "email", "TEXT");
       await db.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users(google_id)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email)"
       );
     })();
   }

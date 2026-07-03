@@ -8,24 +8,25 @@ export async function POST(req: NextRequest) {
   const { username, password } = await req.json();
 
   if (typeof username !== "string" || typeof password !== "string") {
-    return NextResponse.json({ error: "ユーザー名とパスワードを入力してください" }, { status: 400 });
+    return NextResponse.json({ error: "ユーザーIDとパスワードを入力してください" }, { status: 400 });
   }
 
+  const identifier = username.trim().toLowerCase();
   const result = await db.execute({
-    sql: "SELECT id, username, password_hash FROM users WHERE username = ?",
-    args: [username.trim()],
+    sql: "SELECT id, username, password_hash FROM users WHERE lower(username) = ? OR lower(email) = ?",
+    args: [identifier, identifier],
   });
   const user = result.rows[0] as unknown as
     | { id: number; username: string; password_hash: string }
     | undefined;
 
   if (!user) {
-    return NextResponse.json({ error: "ユーザー名またはパスワードが正しくありません" }, { status: 401 });
+    return NextResponse.json({ error: "ユーザーIDまたはパスワードが正しくありません" }, { status: 401 });
   }
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
-    return NextResponse.json({ error: "ユーザー名またはパスワードが正しくありません" }, { status: 401 });
+    return NextResponse.json({ error: "ユーザーIDまたはパスワードが正しくありません" }, { status: 401 });
   }
 
   const token = await createSessionToken({ userId: user.id, username: user.username });
