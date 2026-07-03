@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const origin = new URL(req.url).origin;
+  // Netlify's internal request URL can point at a deploy-specific preview host
+  // instead of the public domain — prefer the client-visible Host header.
+  const forwardedHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const origin = forwardedHost ? `https://${forwardedHost}` : new URL(req.url).origin;
 
   const script = `#!/usr/bin/env node
 /**

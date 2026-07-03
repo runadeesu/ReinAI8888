@@ -670,19 +670,37 @@ export default function ChatApp({ username }: { username: string }) {
                 </li>
               )}
               <li>
-                <button
-                  onClick={handleDownloadAgentScript}
-                  className="rounded-lg border border-black/15 dark:border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5"
+                <a
+                  href="/reinai-agent.exe"
+                  download
+                  className="inline-block rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90"
                 >
-                  ↓ エージェントをダウンロード (reinai-agent.js)
-                </button>
+                  ↓ reinai-agent.exe をダウンロード（Windows・Node.js不要）
+                </a>
+                <p className="text-xs text-zinc-500 mt-1">
+                  署名なしの実行ファイルのため、Windows Defenderなどの警告が出る場合があります。「詳細情報」→「実行」で起動してください。
+                </p>
               </li>
               <li>
-                Node.jsがインストールされたPCのターミナルで実行:
+                ダウンロードした場所でコマンドプロンプトを開いて実行:
                 <pre className="mt-1 rounded-lg bg-zinc-900 text-zinc-100 px-3 py-2 text-xs overflow-x-auto">
-                  node reinai-agent.js あなたのトークン
+                  reinai-agent.exe あなたのトークン
                 </pre>
-                <span className="text-zinc-500">次回以降は <code>node reinai-agent.js</code> だけで起動できます</span>
+                <span className="text-zinc-500">次回以降は <code>reinai-agent.exe</code> をダブルクリックするだけで起動できます</span>
+              </li>
+              <li>
+                <details className="text-xs text-zinc-500">
+                  <summary className="cursor-pointer">Windows以外・Node.jsを使いたい場合</summary>
+                  <button
+                    onClick={handleDownloadAgentScript}
+                    className="mt-2 rounded-lg border border-black/15 dark:border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    ↓ reinai-agent.js をダウンロード
+                  </button>
+                  <pre className="mt-2 rounded-lg bg-zinc-900 text-zinc-100 px-3 py-2 text-xs overflow-x-auto">
+                    node reinai-agent.js あなたのトークン
+                  </pre>
+                </details>
               </li>
             </ol>
 
