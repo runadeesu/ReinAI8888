@@ -19,7 +19,8 @@ type AttachedFile = {
 };
 type Block =
   | { kind: "text"; text: string }
-  | { kind: "code"; lang: string; code: string; filename: string };
+  | { kind: "code"; lang: string; code: string; filename: string }
+  | { kind: "exec"; command: string };
 
 const TEXT_EXTENSIONS = [
   ".txt", ".md", ".csv", ".json", ".js", ".ts", ".tsx", ".jsx",
@@ -61,8 +62,12 @@ function parseBlocks(content: string): Block[] {
     }
     const lang = match[1] || "text";
     const code = match[2];
-    const filename = extractFilename(code, lang);
-    blocks.push({ kind: "code", lang, code, filename });
+    if (lang.toLowerCase() === "exec") {
+      blocks.push({ kind: "exec", command: code.trim() });
+    } else {
+      const filename = extractFilename(code, lang);
+      blocks.push({ kind: "code", lang, code, filename });
+    }
     last = re.lastIndex;
   }
   if (last < content.length) {
@@ -129,7 +134,96 @@ function CodeBlock({ lang, code, filename }: { lang: string; code: string; filen
   );
 }
 
-function AssistantMessage({ content }: { content: string }) {
+type ExecStatus = "idle" | "pending" | "done" | "error";
+
+function ExecBlock({ command, chatId, agentConnected }: { command: string; chatId: number | null; agentConnected: boolean }) {
+  const [status, setStatus] = useState<ExecStatus>("idle");
+  const [output, setOutput] = useState<string | null>(null);
+  const [exitCode, setExitCode] = useState<number | null>(null);
+
+  async function handleRun() {
+    if (!chatId || status === "pending") return;
+    if (!confirm(`このコマンドをあなたのPCで実行します:\n\n${command}\n\n実行してよろしいですか？`)) return;
+
+    setStatus("pending");
+    setOutput(null);
+    try {
+      const res = await fetch("/api/agent/commands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, command }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("error");
+        setOutput(data.error ?? "実行キューへの登録に失敗しました");
+        return;
+      }
+      const commandId = data.id;
+
+      const start = Date.now();
+      while (Date.now() - start < 120000) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const pollRes = await fetch(`/api/agent/commands/${commandId}`);
+        const pollData = await pollRes.json();
+        if (pollData.status === "done") {
+          setStatus(pollData.exitCode === 0 ? "done" : "error");
+          setOutput(pollData.output ?? "");
+          setExitCode(pollData.exitCode);
+          return;
+        }
+      }
+      setStatus("error");
+      setOutput("タイムアウトしました。エージェントが起動しているか確認してください。");
+    } catch {
+      setStatus("error");
+      setOutput("通信エラーが発生しました");
+    }
+  }
+
+  return (
+    <div className="my-2 rounded-xl overflow-hidden border border-amber-300/60 dark:border-amber-700/60 bg-zinc-900 dark:bg-zinc-950 text-sm">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-amber-900/20 dark:bg-amber-900/30 text-amber-200 text-xs">
+        <span className="font-mono font-medium">⚡ PCで実行するコマンド</span>
+      </div>
+      <pre className="overflow-x-auto px-4 py-3 text-zinc-100 font-mono leading-relaxed">
+        <code>{command}</code>
+      </pre>
+      <div className="flex items-center gap-2 px-3 pb-3">
+        <button
+          onClick={handleRun}
+          disabled={!agentConnected || status === "pending"}
+          className="rounded-lg bg-amber-500 text-black px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-40"
+        >
+          {status === "pending" ? "実行中..." : "▶ 実行"}
+        </button>
+        {!agentConnected && (
+          <span className="text-xs text-zinc-500">エージェント未接続（サイドバーの「PC連携」から設定）</span>
+        )}
+      </div>
+      {output !== null && (
+        <pre
+          className={`mx-3 mb-3 rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words overflow-x-auto ${
+            status === "error" ? "bg-red-950/60 text-red-200" : "bg-black/40 text-zinc-200"
+          }`}
+        >
+          {output}
+          {exitCode !== null && `\n\n(終了コード: ${exitCode})`}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function AssistantMessage({
+  content,
+  chatId,
+  agentConnected,
+}: {
+  content: string;
+  chatId: number | null;
+  agentConnected: boolean;
+}) {
   const blocks = parseBlocks(content);
   const codeBlocks = blocks.filter((b): b is Extract<Block, { kind: "code" }> => b.kind === "code");
 
@@ -138,8 +232,10 @@ function AssistantMessage({ content }: { content: string }) {
       {blocks.map((b, i) =>
         b.kind === "text" ? (
           <span key={i} className="whitespace-pre-wrap break-words">{b.text}</span>
-        ) : (
+        ) : b.kind === "code" ? (
           <CodeBlock key={i} lang={b.lang} code={b.code} filename={b.filename} />
+        ) : (
+          <ExecBlock key={i} command={b.command} chatId={chatId} agentConnected={agentConnected} />
         )
       )}
       {codeBlocks.length >= 2 && (
@@ -168,8 +264,44 @@ export default function ChatApp({ username }: { username: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentToken, setAgentToken] = useState<string | null>(null);
+  const [agentLastSeen, setAgentLastSeen] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshAgentStatus = useCallback(async () => {
+    const res = await fetch("/api/agent/token");
+    if (!res.ok) return;
+    const data = await res.json();
+    setAgentLastSeen(data.lastSeenAt);
+    // Consider connected if we've heard from the agent in the last 15 seconds
+    setAgentConnected(!!data.lastSeenAt && Date.now() - new Date(data.lastSeenAt).getTime() < 15000);
+  }, []);
+
+  useEffect(() => {
+    refreshAgentStatus();
+    const interval = setInterval(refreshAgentStatus, 8000);
+    return () => clearInterval(interval);
+  }, [refreshAgentStatus]);
+
+  async function handleGenerateAgentToken() {
+    const res = await fetch("/api/agent/token", { method: "POST" });
+    const data = await res.json();
+    setAgentToken(data.token);
+  }
+
+  async function handleRevokeAgent() {
+    if (!confirm("PC連携を解除しますか？エージェントは動作しなくなります。")) return;
+    await fetch("/api/agent/token", { method: "DELETE" });
+    setAgentToken(null);
+    await refreshAgentStatus();
+  }
+
+  function handleDownloadAgentScript() {
+    window.open("/api/agent/script", "_blank");
+  }
 
   const loadChats = useCallback(async () => {
     const res = await fetch("/api/chats");
@@ -367,6 +499,13 @@ export default function ChatApp({ username }: { username: string }) {
           </button>
         )}
         <button
+          onClick={() => setAgentPanelOpen(true)}
+          className="mx-3 mb-1 flex items-center justify-center gap-1.5 rounded-full border border-black/15 dark:border-white/15 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5"
+        >
+          <span className={`h-2 w-2 rounded-full ${agentConnected ? "bg-green-500" : "bg-zinc-400"}`} />
+          PC連携{agentConnected ? "（接続中）" : ""}
+        </button>
+        <button
           onClick={handleLogout}
           className="m-3 mt-1 rounded-full border border-black/15 dark:border-white/15 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5"
         >
@@ -405,7 +544,7 @@ export default function ChatApp({ username }: { username: string }) {
                     {m.content}
                   </div>
                 ) : (
-                  <AssistantMessage content={m.content} />
+                  <AssistantMessage content={m.content} chatId={activeChatId} agentConnected={agentConnected} />
                 )}
               </div>
             ))
@@ -483,6 +622,79 @@ export default function ChatApp({ username }: { username: string }) {
           </form>
         </div>
       </main>
+
+      {agentPanelOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">PC連携（コード実行）</h2>
+              <button onClick={() => setAgentPanelOpen(false)} className="text-zinc-400 hover:text-foreground">✕</button>
+            </div>
+
+            <p className="text-sm text-zinc-500 mb-4">
+              あなたのPCに小さなエージェントを起動しておくと、チャット内で提案されたコマンドを「実行」ボタンで実際にPC上で実行できます。
+              <br />
+              <span className="text-amber-600 dark:text-amber-400 font-medium">
+                ⚠ トークンは他人と共有しないでください。漏れると誰でもあなたのPCでコマンドを実行できてしまいます。
+              </span>
+            </p>
+
+            <div className="flex items-center gap-2 mb-4 text-sm">
+              <span className={`h-2.5 w-2.5 rounded-full ${agentConnected ? "bg-green-500" : "bg-zinc-400"}`} />
+              {agentConnected ? "エージェント接続中" : "エージェント未接続"}
+              {agentLastSeen && (
+                <span className="text-xs text-zinc-400">
+                  （最終通信: {new Date(agentLastSeen).toLocaleString("ja-JP")}）
+                </span>
+              )}
+            </div>
+
+            <ol className="text-sm space-y-3 mb-4 list-decimal list-inside">
+              <li>
+                <button
+                  onClick={handleGenerateAgentToken}
+                  className="rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90"
+                >
+                  トークンを発行
+                </button>
+                <span className="ml-2 text-zinc-500">（既存のトークンは無効化されます）</span>
+              </li>
+              {agentToken && (
+                <li>
+                  <div className="rounded-lg bg-zinc-100 dark:bg-zinc-800 px-3 py-2 font-mono text-xs break-all select-all">
+                    {agentToken}
+                  </div>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    このトークンは今しか表示されません。コピーして保存してください。
+                  </p>
+                </li>
+              )}
+              <li>
+                <button
+                  onClick={handleDownloadAgentScript}
+                  className="rounded-lg border border-black/15 dark:border-white/15 px-3 py-1.5 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  ↓ エージェントをダウンロード (reinai-agent.js)
+                </button>
+              </li>
+              <li>
+                Node.jsがインストールされたPCのターミナルで実行:
+                <pre className="mt-1 rounded-lg bg-zinc-900 text-zinc-100 px-3 py-2 text-xs overflow-x-auto">
+                  node reinai-agent.js あなたのトークン
+                </pre>
+                <span className="text-zinc-500">次回以降は <code>node reinai-agent.js</code> だけで起動できます</span>
+              </li>
+            </ol>
+
+            <button
+              onClick={handleRevokeAgent}
+              className="w-full rounded-full border border-red-200 dark:border-red-900 py-2 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              PC連携を解除する
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

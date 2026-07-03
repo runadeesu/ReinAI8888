@@ -44,6 +44,24 @@ export function ensureSchema() {
             content TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
           )`,
+          `CREATE TABLE IF NOT EXISTS agent_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+            token_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_at TEXT
+          )`,
+          `CREATE TABLE IF NOT EXISTS agent_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            chat_id INTEGER NOT NULL REFERENCES chats(id),
+            command TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'error')),
+            output TEXT,
+            exit_code INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT
+          )`,
         ],
         "write"
       );
