@@ -38,15 +38,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { content, fileName, fileData, fileType } = body as {
     content: string;
     fileName?: string;
-    fileData?: string; // base64 for images, plain text for text files
-    fileType?: string; // "image" | "text"
+    fileData?: string;
+    fileType?: string;
   };
 
   if (typeof content !== "string") {
     return NextResponse.json({ error: "メッセージを入力してください" }, { status: 400 });
   }
 
-  // Build what gets stored in DB for this user turn
   let storedContent = content.trim();
   if (fileType === "text" && fileName && fileData) {
     storedContent = `${content.trim()}\n\n【添付ファイル: ${fileName}】\n${fileData}`.trim();
@@ -83,36 +82,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "GROQ_API_KEY が設定されていません" }, { status: 500 });
   }
 
-  // Build Groq messages
   const systemMessage = {
     role: "system",
-    content: `あなたはReinAIというコード作成専門のAIアシスタントです。
-プログラミングの質問に答え、質の高いコードを生成することが得意です。
-
-【コードブロックのルール】
-- コードを書くときは必ずコードブロック(\`\`\`言語名)を使う
-- コードブロックの1行目に必ずファイル名をコメントで記載する
-  例: # main.py / // index.js / <!-- index.html --> / /* style.css */ / REM run.bat / # script.ps1
-- 複数ファイルが必要なプロジェクトはすべてのファイルを順番に提供する
-
-【実行可能ファイルについて】
-- Windowsで直接実行したい場合 → .bat または .ps1 スクリプトを提供
-- .exe が必要な場合 → PythonはPyInstaller、GoやRustは直接コンパイル可能なソースコードを提供し、コンパイル手順も説明する
-- .sh はLinux/macOSで実行可能なシェルスクリプトを提供
-
-【絶対に守るルール】
-- コードは必ず最初から最後まで完全に出力する
-- 「省略」「...」「// 残りは同じ」「// 以下略」などは絶対に使わない
-- どんなに長くても必ず全部書ききる
-- 修正が必要な場合もファイル全体を出力する
-
-日本語・英語どちらの質問にも対応します。`,
+    content: `あなたはReinAIというコード作成専門のAIアシスタントです。\nプログラミングの質問に答え、質の高いコードを生成することが得意です。\n\n【コードブロックのルール】\n- コードを書くときは必ずコードブロック(\`\`\`言語名)を使う\n- コードブロックの1行目に必ずファイル名をコメントで記載する\n  例: # main.py / // index.js / <!-- index.html --> / /* style.css */ / REM run.bat / # script.ps1\n- 複数ファイルが必要なプロジェクトはすべてのファイルを順番に提供する\n\n【実行可能ファイルについて】\n- Windowsで直接実行したい場合 → .bat または .ps1 スクリプトを提供\n- .exe が必要な場合 → PythonはPyInstaller、GoやRustは直接コンパイル可能なソースコードを提供し、コンパイル手順も説明する\n- .sh はLinux/macOSで実行可能なシェルスクリプトを提供\n\n【絶対に守るルール】\n- コードは必ず最初から最後まで完全に出力する\n- 「省略」「...」「// 残りは同じ」「// 以下略」などは絶対に使わない\n- どんなに長くても必ず全部書ききる\n- 修正が必要な場合もファイル全体を出力する\n\n日本語・英語どちらの質問にも対応します。`,
   };
 
-  // For all past messages except the last one, use plain text
   const pastMessages = history.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
 
-  // For the current user message, optionally include image
   let currentUserMessage: object;
   if (fileType === "image" && fileData) {
     const mimeType = /\.png$/i.test(fileName ?? "") ? "image/png"
