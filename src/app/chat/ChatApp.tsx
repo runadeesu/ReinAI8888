@@ -631,8 +631,25 @@ export default function ChatApp({ username }: { username: string }) {
               <button onClick={() => setAgentPanelOpen(false)} className="text-zinc-400 hover:text-foreground">✕</button>
             </div>
 
+            <div className="mb-5 rounded-xl border border-black/10 dark:border-white/10 p-3">
+              <p className="text-sm font-semibold mb-1">🖥️ 完全版CLI（ブラウザ不要）</p>
+              <p className="text-xs text-zinc-500 mb-2">
+                このサイトを開かなくても、ターミナルだけでReinAIとチャット・コード生成・コマンド実行ができます。実行前には毎回 y/N の確認が入ります。
+              </p>
+              <a
+                href="/reinai-cli.exe"
+                download
+                className="inline-block rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90"
+              >
+                ↓ reinai-cli.exe をダウンロード
+              </a>
+              <p className="text-xs text-zinc-500 mt-2">
+                コマンドプロンプトで <code className="font-mono">reinai-cli.exe</code> を実行 → ログイン/新規登録 → そのままチャットできます。
+              </p>
+            </div>
+
             <p className="text-sm text-zinc-500 mb-4">
-              あなたのPCに小さなエージェントを起動しておくと、チャット内で提案されたコマンドを「実行」ボタンで実際にPC上で実行できます。
+              下記は「Webサイトのチャット」で提案されたコマンドを、あなたのPCで実行するための連携（エージェント）です。
               <br />
               <span className="text-amber-600 dark:text-amber-400 font-medium">
                 ⚠ トークンは他人と共有しないでください。漏れると誰でもあなたのPCでコマンドを実行できてしまいます。
