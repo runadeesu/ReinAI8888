@@ -632,19 +632,19 @@ export default function ChatApp({ username }: { username: string }) {
             </div>
 
             <div className="mb-5 rounded-xl border border-black/10 dark:border-white/10 p-3">
-              <p className="text-sm font-semibold mb-1">🖥️ 完全版CLI（ブラウザ不要）</p>
+              <p className="text-sm font-semibold mb-1">🖥️ デスクトップアプリ版</p>
               <p className="text-xs text-zinc-500 mb-2">
-                このサイトを開かなくても、ターミナルだけでReinAIとチャット・コード生成・コマンド実行ができます。実行前には毎回 y/N の確認が入ります。
+                ダブルクリックするだけで、アドレスバーやタブのない独立したウィンドウでReinAIが開きます（機能はサイトと完全に同じ）。Windows・Microsoft Edgeが必要です。
               </p>
               <a
-                href="/reinai-cli.exe"
+                href="/reinai-app.exe"
                 download
                 className="inline-block rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90"
               >
-                ↓ reinai-cli.exe をダウンロード
+                ↓ reinai-app.exe をダウンロード
               </a>
               <p className="text-xs text-zinc-500 mt-2">
-                コマンドプロンプトで <code className="font-mono">reinai-cli.exe</code> を実行 → ログイン/新規登録 → そのままチャットできます。
+                ダウンロード後、<code className="font-mono">reinai-app.exe</code> をダブルクリックするだけで起動します。デスクトップやスタートメニューにショートカットを作っておくと便利です。
               </p>
             </div>
 
